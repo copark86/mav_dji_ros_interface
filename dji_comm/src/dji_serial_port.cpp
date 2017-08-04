@@ -196,76 +196,49 @@ bool DJISerialPort::configSerial(int baudrate, char data_bits, char parity_bits,
   int std_rate[] = { 4800, 9600, 19200, 38400, 57600, 115200, 230400, 921600 };
 
   int i, j;
-  struct termios newtio, oldtio;
+  struct termios config;
   /* save current port parameter */
-  if (tcgetattr(serial_fd_, &oldtio) != 0) {
+  if (tcgetattr(serial_fd_, &config) != 0) {
     API_LOG(this, ERROR_LOG, "fail to save current port\n");
     return false;
   }
-  memset(&newtio, 0, sizeof(newtio));
 
-  /* config the size of char */
-  newtio.c_cflag |= CLOCAL | CREAD;
-  newtio.c_cflag &= ~CSIZE;
+  config.c_iflag &= ~(IGNBRK | BRKINT | ICRNL | INLCR | PARMRK | INPCK | ISTRIP | IXON);
 
-  /* config data bit */
-  switch (data_bits) {
-    case 7:
-      newtio.c_cflag |= CS7;
-      break;
-    case 8:
-      newtio.c_cflag |= CS8;
-      break;
-  }
-  /* config the parity bit */
-  switch (parity_bits) {
-    /* odd */
-    case 'O':
-    case 'o':
-      newtio.c_cflag |= PARENB;
-      newtio.c_cflag |= PARODD;
-      break;
-      /* even */
-    case 'E':
-    case 'e':
-      newtio.c_cflag |= PARENB;
-      newtio.c_cflag &= ~PARODD;
-      break;
-      /* none */
-    case 'N':
-    case 'n':
-      newtio.c_cflag &= ~PARENB;
-      break;
-  }
+  config.c_oflag &= ~(OCRNL | ONLCR | ONLRET | ONOCR | OFILL | OPOST);
+
+#ifdef OLCUC
+  config.c_oflag &= ~OLCUC;
+#endif
+
+#ifdef ONOEOT
+  config.c_oflag &= ~ONOEOT;
+#endif
+
+  config.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+
+  config.c_cflag &= ~(CSIZE | PARENB);
+  config.c_cflag |= CS8;
+
+
+  config.c_cflag |= CLOCAL;
+
+  config.c_cc[VMIN] = 1;
+  config.c_cc[VTIME] = 10;
+
   /* config baudrate */
   j = sizeof(std_rate) / 4;
   for (i = 0; i < j; ++i) {
     if (std_rate[i] == baudrate) {
       /* set standard baudrate */
-      cfsetispeed(&newtio, st_baud[i]);
-      cfsetospeed(&newtio, st_baud[i]);
+      cfsetispeed(&config, st_baud[i]);
+      cfsetospeed(&config, st_baud[i]);
       break;
     }
   }
-  /* config stop bit */
-  if (stop_bits == 1)
-    newtio.c_cflag &= ~CSTOPB;
-  else if (stop_bits == 2)
-    newtio.c_cflag |= CSTOPB;
-
-  /* config waiting time & min number of char */
-  newtio.c_cc[VTIME] = 1;
-  newtio.c_cc[VMIN] = 1;
-
-  /* using the raw data mode */
-  newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-  newtio.c_oflag &= ~OPOST;
-
-  /* flush the hardware fifo */
-  tcflush(serial_fd_, TCIFLUSH);
 
   /* activite the configuration */
-  if ((tcsetattr(serial_fd_, TCSANOW, &newtio)) != 0) {
+  if ((tcsetattr(serial_fd_, TCSANOW, &config)) != 0) {
     API_LOG(this, ERROR_LOG, "fail to active configuration\n");
     return false;
   }
